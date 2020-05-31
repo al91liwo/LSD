@@ -4,22 +4,81 @@ import pandas as pd
 from src.helper import preprocess_binance, preprocess_binance_live
 import time
 
+
 class Dataset(object):
+    """
+    Standard Dataset class
+    Includes data, data queue, current figure and preprocessing tool
+    """
+    def __init__(self, data, *args, **kwargs):
+        # TODO: Data should be separated for different views.
+        self._data = data
+        self.queued_data = []
+        # TODO: A dataset may define different figures (views).
+        self.figure = kwargs.pop('figure', {})
+        self.preprocess = kwargs.pop('preprocess', lambda x: x)
 
-    pass
+    def get_figure(self):
+        """
+        Get current figure
+        :return: ValueError if the figure is not defined, else the figure
+        """
+        if self.figure:
+            return self.figure
+        raise ValueError("No figure defined")
+
+    def add_entry(self, entry):
+        """
+
+        :param entry:
+        :return:
+        """
+        if entry:
+            self.queued_data.append(self.preprocess(entry))
+
+    def update(self, *args, **kwargs):
+        while len(self.queued_data) > 1:
+            current = self.queued_data.pop()
+            self._to_figure(current, *args, **kwargs)
+
+    def _to_figure(self, current, *args, **kwargs):
+        """
+        Add current entry to the figure
+        :param args:
+        :param kwargs:
+        :return:
+        """
+        raise NotImplementedError("Need to implement me first")
 
 
-class StockDataset(Dataset):
+class TimeSeriesDataset(Dataset):
+    """
+    TODO: create figure for infinite many columns which maps the values correctly.
+    """
+    def _to_figure(self, current, *args, **kwargs):
+        x = []
+        y = []
+        if 'x' in self.figure.keys():
+            x = self.figure.get('x', [])
+        x.append(self._get_x(current))
+        self.figure.update({'x': x})
+        if 'y' in self.figure.keys():
+            y = self.figure.get('y', [])
+        y.append(self._get_y(current))
+        self.figure.update({'y': y})
 
-    def __init__(self, symbol, _preprocess=lambda x: x):
-        self.symbol = symbol
+
+class StockDataset(TimeSeriesDataset):
+
+    def __init__(self, data, _preprocess=lambda x: x):
+        super().__init__(data)
         self.columns = ['time', 'open', 'high', 'low', 'close', 'volume']
         self.df = pd.DataFrame(columns=self.columns)
         self.df.index = self.df['time']
         self._preprocess = _preprocess
 
-    def _add_entry(self, entry):
-        return self._preprocess(entry)
+    def _to_figure(self, current, *args, **kwargs):
+        pass
 
 
 class BinanceDataset(StockDataset):
@@ -37,7 +96,6 @@ class BinanceDataset(StockDataset):
         "28.46694368",      # Taker buy quote asset volume
         "17928899.62484339" # Can be ignored
     """
-
 
     def __init__(self, symbol, _preprocess=preprocess_binance):
         super().__init__(symbol=symbol, _preprocess=_preprocess)
@@ -127,17 +185,4 @@ class LiveBinanceDataset(BinanceDataset):
         return figure
 
 
-class TimeSeriesDataset(Dataset):
 
-    def __init__(self, x, y):
-
-        y.update({'time': x})
-        self.values = pd.DataFrame(y)
-
-    def get_figure(self):
-
-        figures = [
-            {'x': self.values['time'],
-             'y': self.values[x], 'type': 'scatter', 'name': x}
-            for x in self.values.columns if x != 'time']
-        return figures
